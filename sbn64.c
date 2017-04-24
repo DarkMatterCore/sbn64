@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#define VERSION "1.51"
+#define VERSION "1.52"
 
 #define EEPROM		0x200	// 512 bytes (used in physical cartridges)
 #define EEPROMx4	0x800	// 2 KiB (EEPROM 4 Kbits * 4 = 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64)
@@ -411,26 +411,6 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
-	if (dst_fmt == 2 && type == 3) // Output: Wii N64 VC Controller Pak
-	{
-		free(sixty_header);
-		fclose(infile);
-		fclose(outfile);
-		remove(argv[output]);
-		printf("\n\tWii N64 Virtual Console isn't compatible with\n\tController Pak save data.\n");
-		return 1;
-	}
-	
-	if (dst_fmt == 3 && type == 3) // Output: Sixtyforce Controller Pak
-	{
-		free(sixty_header);
-		fclose(infile);
-		fclose(outfile);
-		remove(argv[output]);
-		printf("\n\tConversion of Controller Pak data to the Sixtyforce format\n\tisn't supported (yet).\n");
-		return 1;
-	}
-	
 	if (src_fmt == 0 && type == 2) // Input: Wii64 Flash RAM
 	{
 		if (!strncasecmp(argv[input] + strlen(argv[input]) - 4, ".mpk", 4))
@@ -483,6 +463,26 @@ int main(int argc, char **argv)
 		printf("\n\tThis %s save file doesn't need to be modified.\n\tJust try it with %s.\n", \
 			(type == 0 ? "EEPROM" : (type == 1 ? "SRAM" : (type == 2 ? "Flash RAM" : "Controller Pak"))), \
 			(dst_fmt == 0 ? "Wii64" : (dst_fmt == 1 ? "Project64" : "your Wii N64 Virtual Console title")));
+		return 1;
+	}
+	
+	if (dst_fmt == 2 && type == 3) // Output: Wii N64 VC Controller Pak
+	{
+		free(sixty_header);
+		fclose(infile);
+		fclose(outfile);
+		remove(argv[output]);
+		printf("\n\tWii N64 Virtual Console isn't compatible with\n\tController Pak save data.\n");
+		return 1;
+	}
+	
+	if (dst_fmt == 3 && type == 3) // Output: Sixtyforce Controller Pak
+	{
+		free(sixty_header);
+		fclose(infile);
+		fclose(outfile);
+		remove(argv[output]);
+		printf("\n\tConversion of Controller Pak data to the Sixtyforce format\n\tisn't supported (yet).\n");
 		return 1;
 	}
 	
