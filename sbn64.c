@@ -5,7 +5,7 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#define VERSION "1.5"
+#define VERSION "1.51"
 
 #define EEPROM		0x200	// 512 bytes (used in physical cartridges)
 #define EEPROMx4	0x800	// 2 KiB (EEPROM 4 Kbits * 4 = 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64)
@@ -14,7 +14,8 @@
 #define SRAM		0x8000	// 32 KiB (SRAM 256 Kbits) (used in physical cartridges) (used in all emulators)
 #define FlashRAM	0x20000	// 128 KiB (FlashRAM 1024 Kbits) (used in physical cartridges) (used in all emulators)
 #define CtrlPak		0x8000	// 32 KiB (SRAM 256 Kbits) (used in physical Controller Paks) (used in Sixtyforce)
-#define CtrlPakx8	0x40000	// 256 KiB (SRAM 256 Kbits * 8 = 2048 Kbits) (used in Project64 and Wii64)
+#define CtrlPakx4	0x20000	// 128 KiB (SRAM 256 Kbits * 4 = 1024 Kbits) (used in Wii64)
+#define CtrlPakx8	0x40000	// 256 KiB (SRAM 256 Kbits * 8 = 2048 Kbits) (used in Project64)
 
 #define PAK0_MAGIC	0x70616B30 // "pak0" (Big Endian)
 
@@ -45,6 +46,34 @@ typedef struct
 	char magic7[4];			// "data"
 	uint32_t datasize2;		// "data" block size. datasize2 = datasize1
 } sixty_t;
+
+/* Function created by paxdiablo @ http://stackoverflow.com/a/4023921 */
+static int getLine (char *prmpt, char *buff, size_t sz)
+{
+	int ch, extra;
+	
+	// Get line with buffer overrun protection.
+	if (prmpt != NULL)
+	{
+		printf("%s", prmpt);
+		fflush(stdout);
+	}
+	
+	if (fgets(buff, sz, stdin) == NULL) return -1;
+	
+	// If it was too long, there'll be no newline.
+	// In that case, we flush to end of line so that excess doesn't affect the next call.
+	if (buff[strlen(buff)-1] != '\n')
+	{
+		extra = 0;
+		while (((ch = getchar()) != '\n') && (ch != EOF)) extra = 1;
+		return ((extra == 1) ? -2 : 0);
+	}
+	
+	// Otherwise remove newline and give string back to caller.
+	buff[strlen(buff)-1] = '\0';
+	return 0;
+}
 
 void write_data(uint32_t data, FILE *input, FILE *output, uint32_t size, bool byteswap)
 {
@@ -305,6 +334,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
+	char tmp[256] = {0};
 	bool sixty_cp = false;
 	uint32_t data = 0, save_size = 0;
 	
@@ -381,7 +411,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
-	if (dst_fmt == 2 && type == 3) // Wii N64 VC + Controller Pak
+	if (dst_fmt == 2 && type == 3) // Output: Wii N64 VC Controller Pak
 	{
 		free(sixty_header);
 		fclose(infile);
@@ -391,7 +421,7 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
-	if (dst_fmt == 3 && type == 3) // Sixtyforce + Controller Pak
+	if (dst_fmt == 3 && type == 3) // Output: Sixtyforce Controller Pak
 	{
 		free(sixty_header);
 		fclose(infile);
@@ -401,19 +431,49 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	
+	if (src_fmt == 0 && type == 2) // Input: Wii64 Flash RAM
+	{
+		if (!strncasecmp(argv[input] + strlen(argv[input]) - 4, ".mpk", 4))
+		{
+			/* Assume that the input file is actually a Controller Pak save */
+			type = 3;
+		} else {
+			/* Ask the user if the input save is actually a Controller Pak save */
+			while(true)
+			{
+				if (getLine("\n\tIs the input file a Controller Pak save? (yes/no): ", tmp, sizeof(tmp)) == 0)
+				{
+					if (strlen(tmp) == 3 && !strncmp(tmp, "yes", 3))
+					{
+						/* Change save type */
+						type = 3;
+						break;
+					} else
+					if (strlen(tmp) == 2 && !strncmp(tmp, "no", 2))
+					{
+						/* Remain unchanged */
+						break;
+					} else {
+						printf("\tInvalid input. Please answer with \"yes\" or \"no\".\n");
+					}
+				} else {
+					printf("\tInvalid input. Please answer with \"yes\" or \"no\".\n");
+				}
+			}
+		}
+	}
+	
 	printf("\n\tDetected save type: %s (%u Kbits).\n", (type == 0 ? "EEPROM" : (type == 1 ? "SRAM" : (type == 2 ? "Flash RAM" : "Controller Pak"))), ((save_size * 8) / 1024));
 	if (src_fmt == 3 && sixty_cp && (dst_fmt == 0 || dst_fmt == 1)) printf("\n\tDetected Sixtyforce Controller Pak save data (SRAM %u Kbits).\n", ((CtrlPak * 8) / 1024));
 	
 	/* Redundancy checks: */
 	/* Wii64 EEPROM -> Project64 EEPROM */
 	/* Project64 EEPROM -> Wii64 EEPROM */
-	/* Wii64 Controller Pak -> Project64 Controller Pak */
-	/* Project64 Controller Pak -> Wii64 Controller Pak */
 	/* Wii64 SRAM -> Wii N64 VC SRAM */
 	/* Wii N64 VC SRAM -> Wii64 SRAM */
 	/* Wii64 FlashRAM -> Wii N64 VC FlashRAM */
 	/* Wii N64 VC FlashRAM -> Wii64 FlashRAM */
-	if ((((src_fmt == 0 && dst_fmt == 1) || (src_fmt == 1 && dst_fmt == 0)) && (type == 0 || type == 3)) || \
+	if ((((src_fmt == 0 && dst_fmt == 1) || (src_fmt == 1 && dst_fmt == 0)) && type == 0) || \
 		(((src_fmt == 0 && dst_fmt == 2) || (src_fmt == 2 && dst_fmt == 0)) && (type == 1 || type == 2)))
 	{
 		free(sixty_header);
@@ -459,8 +519,8 @@ int main(int argc, char **argv)
 			/* Byteswapping isn't needed */
 			byteswap = false;
 			
-			/* Adjust output save size */
-			outsize = CtrlPakx8;
+			/* Adjust output save size according to the destination format */
+			outsize = (dst_fmt == 0 ? CtrlPakx4 : CtrlPakx8);
 			
 			break;
 		default:
@@ -506,7 +566,6 @@ int main(int argc, char **argv)
 		
 		uint32_t pak0_size = (fsize - (0x84 + save_size + 8)); // Remaining data
 		
-		char tmp[256] = {0};
 		snprintf(tmp, strlen(argv[output]), argv[output]);
 		
 		for(i = strlen(tmp); tmp[i] != '.'; i--);
@@ -520,7 +579,7 @@ int main(int argc, char **argv)
 			printf("\n\tError opening \"%s\" for writing.\n", tmp);
 		} else {
 			write_data(data, infile, cpak, pak0_size, false);
-			pad_data(false, (CtrlPakx8 - pak0_size), cpak);
+			pad_data(false, (dst_fmt == 0 ? (CtrlPakx4 - pak0_size) : (CtrlPakx8 - pak0_size)), cpak);
 			
 			fclose(cpak);
 			
