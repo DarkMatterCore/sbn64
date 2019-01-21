@@ -5,7 +5,9 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#define VERSION "1.52"
+//#define DEBUG
+
+#define VERSION "1.53"
 
 #define EEPROM		0x200	// 512 bytes (used in physical cartridges)
 #define EEPROMx4	0x800	// 2 KiB (EEPROM 4 Kbits * 4 = 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64)
@@ -48,7 +50,7 @@ typedef struct
 } sixty_t;
 
 /* Function created by paxdiablo @ http://stackoverflow.com/a/4023921 */
-static int getLine (char *prmpt, char *buff, size_t sz)
+static int getLine(char *prmpt, char *buff, size_t sz)
 {
 	int ch, extra;
 	
@@ -121,6 +123,7 @@ void usage(char **argv)
 	printf("\t- Conversion to Sixtyforce format requested by Ulises Ribas.\n");
 }
 
+#ifdef DEBUG
 void hexdump(uint8_t *data, size_t size)
 {
 	if (!data || !size) return;
@@ -191,6 +194,7 @@ void print_sixty_header(sixty_t *header)
 	printf("\n\t- magic7: \"%s\".", header->magic7);
 	printf("\n\t- datasize2: 0x%08x (%u bytes).\n", bswap_32(header->datasize2), bswap_32(header->datasize2));
 }
+#endif
 
 int main(int argc, char **argv)
 {
@@ -298,9 +302,9 @@ int main(int argc, char **argv)
 	FILE *infile = fopen(argv[input], "rb");
 	if (!infile)
 	{
-		free(sixty_header);
 		printf("\n\tError opening \"%s\" for reading.\n", argv[input]);
-		return 1;
+		free(sixty_header);
+        return 1;
 	}
 	
 	fseek(infile, 0, SEEK_END);
@@ -313,24 +317,25 @@ int main(int argc, char **argv)
 		if (fsize == 0) printf("\n\tFile size is zero!\n");
 		if (fsize > CtrlPakx8) printf("\n\tFile size is greater than %u KiB!\n", CtrlPakx8 / 1024);
 		if ((fsize % 4) != 0) printf("\n\tFile size is not a multiple of 4!\n");
+        free(sixty_header);
 		fclose(infile);
 		return 1;
 	}
 	
 	if (src_fmt == 3 && fsize < sizeof(sixty_t))
 	{
-		free(sixty_header);
-		fclose(infile);
 		printf("\n\tInput save file is not big enough to store a Sixtyforce header!\n");
+        free(sixty_header);
+		fclose(infile);
 		return 1;
 	}
 	
 	FILE *outfile = fopen(argv[output], "wb");
 	if (!outfile)
 	{
-		free(sixty_header);
-		fclose(infile);
 		printf("\n\tError opening \"%s\" for writing.\n", argv[output]);
+        free(sixty_header);
+		fclose(infile);
 		return 1;
 	}
 	
@@ -349,7 +354,9 @@ int main(int argc, char **argv)
 			!strncmp(sixty_header->magic4, "save", 4) && !strncmp(sixty_header->magic5, "type", 4) && !strncmp(sixty_header->magic6, "size", 4) && \
 			!strncmp(sixty_header->magic7, "data", 4))
 		{
-			//print_sixty_header(sixty_header);
+#ifdef DEBUG
+			print_sixty_header(sixty_header);
+#endif
 			
 			/* Get save size */
 			save_size = bswap_32(sixty_header->datasize2); // Stored in Big Endian
@@ -366,11 +373,11 @@ int main(int argc, char **argv)
 			/* Prepare file stream position for data access */
 			fseek(infile, 0x84, SEEK_SET);
 		} else {
-			free(sixty_header);
+			printf("\n\tInput save file is not a Sixtyforce save!\n");
+            free(sixty_header);
 			fclose(infile);
 			fclose(outfile);
 			remove(argv[output]);
-			printf("\n\tInput save file is not a Sixtyforce save!\n");
 			return 1;
 		}
 	} else {
@@ -403,11 +410,11 @@ int main(int argc, char **argv)
 	
 	if (type == -1)
 	{
-		free(sixty_header);
+		printf("\n\tInvalid N64 save file size.\n\tUnable to determine the save type using the save size.\n");
+        free(sixty_header);
 		fclose(infile);
 		fclose(outfile);
 		remove(argv[output]);
-		printf("\n\tInvalid N64 save file size.\n\tUnable to determine the save type using the save size.\n");
 		return 1;
 	}
 	
@@ -456,33 +463,33 @@ int main(int argc, char **argv)
 	if ((((src_fmt == 0 && dst_fmt == 1) || (src_fmt == 1 && dst_fmt == 0)) && type == 0) || \
 		(((src_fmt == 0 && dst_fmt == 2) || (src_fmt == 2 && dst_fmt == 0)) && (type == 1 || type == 2)))
 	{
-		free(sixty_header);
-		fclose(infile);
-		fclose(outfile);
-		remove(argv[output]);
 		printf("\n\tThis %s save file doesn't need to be modified.\n\tJust try it with %s.\n", \
 			(type == 0 ? "EEPROM" : (type == 1 ? "SRAM" : (type == 2 ? "Flash RAM" : "Controller Pak"))), \
 			(dst_fmt == 0 ? "Wii64" : (dst_fmt == 1 ? "Project64" : "your Wii N64 Virtual Console title")));
+        free(sixty_header);
+		fclose(infile);
+		fclose(outfile);
+		remove(argv[output]);
 		return 1;
 	}
 	
 	if (dst_fmt == 2 && type == 3) // Output: Wii N64 VC Controller Pak
 	{
-		free(sixty_header);
+		printf("\n\tWii N64 Virtual Console isn't compatible with\n\tController Pak save data.\n");
+        free(sixty_header);
 		fclose(infile);
 		fclose(outfile);
 		remove(argv[output]);
-		printf("\n\tWii N64 Virtual Console isn't compatible with\n\tController Pak save data.\n");
 		return 1;
 	}
 	
 	if (dst_fmt == 3 && type == 3) // Output: Sixtyforce Controller Pak
 	{
-		free(sixty_header);
+		printf("\n\tConversion of Controller Pak data to the Sixtyforce format\n\tisn't supported (yet).\n");
+        free(sixty_header);
 		fclose(infile);
 		fclose(outfile);
 		remove(argv[output]);
-		printf("\n\tConversion of Controller Pak data to the Sixtyforce format\n\tisn't supported (yet).\n");
 		return 1;
 	}
 	
@@ -548,7 +555,9 @@ int main(int argc, char **argv)
 		strcpy(sixty_header->magic7, "data");
 		sixty_header->datasize2 = bswap_32(outsize);
 		
-		//print_sixty_header(sixty_header);
+#ifdef DEBUG
+		print_sixty_header(sixty_header);
+#endif
 		
 		/* Write header to the output file */
 		fwrite(sixty_header, sizeof(sixty_t), 1, outfile);
