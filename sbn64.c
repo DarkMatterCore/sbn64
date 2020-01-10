@@ -8,7 +8,7 @@
 
 //#define DEBUG
 
-#define VERSION "1.70"
+#define VERSION "1.71"
 
 #define EEPROM                  0x200       // 512 bytes (EEPROM 4 Kbits) (used in physical cartridges)
 #define EEPROMx4                0x800       // 2 KiB (EEPROM 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64/Not64)
@@ -525,34 +525,17 @@ int main(int argc, char **argv)
         printf("\n\tDetected Sixtyforce Controller Pak save data (SRAM %u Kbits).\n", ((CtrlPak * 8) / 1024));
     }
     
-    /* Redundancy checks: */
-    /* Wii64/Not64 EEPROM -> Project64 EEPROM */
-    /* Project64 EEPROM -> Wii64/Not64 EEPROM */
-    /* Wii64/Not64 SRAM -> Wii N64 VC SRAM */
-    /* Wii N64 VC SRAM -> Wii64/Not64 SRAM */
-    /* Wii64/Not64 FlashRAM -> Wii N64 VC FlashRAM */
-    /* Wii N64 VC FlashRAM -> Wii64/Not64 FlashRAM */
-    if ((((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64) || (src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64)) && save_type == SAVE_TYPE_EEPROM) || \
-        (((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_WIIVC) || (src_fmt == FORMAT_TYPE_WIIVC && dst_fmt == FORMAT_TYPE_WII64)) && (save_type == SAVE_TYPE_SRAM || save_type == SAVE_TYPE_FLASHRAM)))
-    {
-        printf("\n\tThis %s save file doesn't need to be modified.\n\tJust try it with %s.\n", \
-               SAVE_TYPE_STR(save_type), \
-               (dst_fmt == FORMAT_TYPE_WII64 ? "Wii64/Not64" : (dst_fmt == FORMAT_TYPE_PROJECT64 ? "Project64" : "your Wii N64 Virtual Console title")));
-        ret = -8;
-        goto out;
-    }
-    
     if (dst_fmt == FORMAT_TYPE_WIIVC && save_type == SAVE_TYPE_CTRLPAK)
     {
         printf("\n\tWii N64 Virtual Console isn't compatible with\n\tController Pak save data.\n");
-        ret = -9;
+        ret = -8;
         goto out;
     }
     
     if (dst_fmt == FORMAT_TYPE_SIXTYFORCE && save_type == SAVE_TYPE_CTRLPAK)
     {
         printf("\n\tConversion of Controller Pak data to the Sixtyforce format\n\tisn't supported (yet).\n");
-        ret = -10;
+        ret = -9;
         goto out;
     }
     
@@ -592,6 +575,23 @@ int main(int argc, char **argv)
             break;
         default:
             break;
+    }
+    
+    /* Redundancy checks: */
+    /* Wii64/Not64 EEPROM -> Project64 EEPROM */
+    /* Project64 EEPROM -> Wii64/Not64 EEPROM */
+    /* Wii64/Not64 SRAM -> Wii N64 VC SRAM */
+    /* Wii N64 VC SRAM -> Wii64/Not64 SRAM */
+    /* Wii64/Not64 FlashRAM -> Wii N64 VC FlashRAM */
+    /* Wii N64 VC FlashRAM -> Wii64/Not64 FlashRAM */
+    if (save_type_size == outfile_size && ((((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64) || (src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64)) && save_type == SAVE_TYPE_EEPROM) || \
+        (((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_WIIVC) || (src_fmt == FORMAT_TYPE_WIIVC && dst_fmt == FORMAT_TYPE_WII64)) && (save_type == SAVE_TYPE_SRAM || save_type == SAVE_TYPE_FLASHRAM))))
+    {
+        printf("\n\tThis %s save file doesn't need to be modified.\n\tJust try it with %s.\n", \
+               SAVE_TYPE_STR(save_type), \
+               (dst_fmt == FORMAT_TYPE_WII64 ? "Wii64/Not64" : (dst_fmt == FORMAT_TYPE_PROJECT64 ? "Project64" : "your Wii N64 Virtual Console title")));
+        ret = -10;
+        goto out;
     }
     
     /* Time to do the magic */
