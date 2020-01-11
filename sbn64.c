@@ -2,13 +2,18 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <stdbool.h>
 #include <errno.h>
 
+#if defined(__MINGW32__) || defined(_MSC_VER)
+#define strncasecmp _strnicmp
+#else
+#include <strings.h>
+#endif
+
 //#define DEBUG
 
-#define VERSION "1.71"
+#define VERSION "1.72"
 
 #define EEPROM                  0x200       // 512 bytes (EEPROM 4 Kbits) (used in physical cartridges)
 #define EEPROMx4                0x800       // 2 KiB (EEPROM 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64/Not64)
@@ -47,6 +52,8 @@
 #define MAX_ELEMENTS(x)         ((sizeof((x))) / (sizeof((x)[0])))
 #define MAX_CHARACTERS(x)       (MAX_ELEMENTS((x)) - 1)
 
+#define be_u32(x)               (big_endian_flag ? (x) : __builtin_bswap32((x)))
+
 #define PACKED                  __attribute__((packed))
 
 typedef enum {
@@ -73,13 +80,6 @@ typedef struct _format_type_t
     format_type_value_t val;
 } PACKED format_type_t;
 
-const format_type_t formats[FORMAT_TYPE_CNT] = {
-    { "wii64", FORMAT_TYPE_WII64 },
-    { "pj64", FORMAT_TYPE_PROJECT64 },
-    { "wiivc", FORMAT_TYPE_WIIVC },
-    { "sixtyforce", FORMAT_TYPE_SIXTYFORCE }
-};
-
 typedef struct _sixtyforce_savedata_header_t
 {
     char magic1[4];         // "60cs"
@@ -100,6 +100,15 @@ typedef struct _sixtyforce_savedata_header_t
     char magic7[4];         // "data"
     uint32_t datasize2;     // "data" block size. datasize2 = datasize1
 } PACKED sixtyforce_savedata_header_t;
+
+static const format_type_t formats[FORMAT_TYPE_CNT] = {
+    { "wii64", FORMAT_TYPE_WII64 },
+    { "pj64", FORMAT_TYPE_PROJECT64 },
+    { "wiivc", FORMAT_TYPE_WIIVC },
+    { "sixtyforce", FORMAT_TYPE_SIXTYFORCE }
+};
+
+static bool big_endian_flag = false;
 
 /* Function created by paxdiablo @ http://stackoverflow.com/a/4023921 */
 static int get_line(char *prmpt, char *buff, size_t sz)
@@ -127,6 +136,16 @@ static int get_line(char *prmpt, char *buff, size_t sz)
     // Otherwise remove newline and give string back to caller.
     buff[strlen(buff) - 1] = '\0';
     return 0;
+}
+
+bool is_big_endian(void)
+{
+    union {
+        uint32_t i;
+        uint8_t c[4];
+    } test_var = { 0x01020304 };
+    
+    return (test_var.c[0] == 0x01);
 }
 
 static void write_data(FILE *input, FILE *output, size_t size, bool byteswap)
@@ -158,29 +177,30 @@ static void usage(char **argv)
 {
     if (!argv || !argv[0] || !strlen(argv[0])) return;
     
-    printf("\tUsage: %s -i [infile] -o [outfile] -s [src_fmt] -d [dst_fmt]\n\n", argv[0]);
-    printf("\t- infile: Name of the input save file.\n");
-    printf("\t- outfile: Name of the output save file.\n");
-    printf("\t- src_fmt: Input save file format.\n");
-    printf("\t- dst_fmt: Output save file format.\n\n");
+    printf("\n\tUsage: %s -i [infile] -o [outfile] -s [src_fmt] -d [dst_fmt]\n\n", argv[0]);
+    printf("\t\t- infile: Name of the input save file.\n");
+    printf("\t\t- outfile: Name of the output save file.\n");
+    printf("\t\t- src_fmt: Input save file format.\n");
+    printf("\t\t- dst_fmt: Output save file format.\n\n");
     printf("\tPossible input/output format values:\n\n");
-    printf("\t- \"wii64\": Wii64/Not64 save format.\n");
-    printf("\t- \"pj64\": Project64 save format.\n");
-    printf("\t- \"wiivc\": Wii N64 Virtual Console save format.\n");
-    printf("\t- \"sixtyforce\": Sixtyforce save format.\n\n");
+    printf("\t\t- \"wii64\": Wii64/Not64 save format.\n");
+    printf("\t\t- \"pj64\": Project64 save format.\n");
+    printf("\t\t- \"wiivc\": Wii N64 Virtual Console save format.\n");
+    printf("\t\t- \"sixtyforce\": Sixtyforce save format.\n\n");
     printf("\tExample:\n\n");
-    printf("\t%s -i \"ZELDA MAJORA'S MASK.fla\" -o \"majora_wii.fla\" -s pj64 -d wii64\n\n", argv[0]);
+    printf("\t\t%s -i \"ZELDA MAJORA'S MASK.fla\" -o \"majora_wii.fla\" -s pj64 -d wii64\n\n", argv[0]);
     printf("\tNotes:\n\n");
-    printf("\t- Conversion from Sixtyforce format requested by Morshu9001.\n");
-    printf("\t- Conversion to Sixtyforce format requested by Ulises Ribas.\n");
+    printf("\t\t- Conversion from Sixtyforce format requested by Morshu9001.\n");
+    printf("\t\t- Conversion to Sixtyforce format requested by Ulises Ribas.\n");
 }
 
 #ifdef DEBUG
-static void hexdump(uint8_t *data, size_t size)
+static void hexdump(void *buf, size_t size)
 {
-    if (!data || !size) return;
+    if (!buf || !size) return;
     
     size_t i, j;
+    uint8_t *data = (uint8_t*)buf;
     
     for(i = 0; i < size; i += 8)
     {
@@ -229,23 +249,23 @@ static void print_sixtyforce_savedata_header(sixtyforce_savedata_header_t *heade
     
     printf("\n\tSixtyforce header contents:\n");
     printf("\n\t- magic1: \"%s\".", header->magic1);
-    printf("\n\t- filesize: 0x%08x (%u bytes).", __builtin_bswap32(header->filesize), __builtin_bswap32(header->filesize));
+    printf("\n\t- filesize: 0x%08x (%u bytes).", be_u32(header->filesize), be_u32(header->filesize));
     printf("\n\t- magic2: \"%s\".", header->magic2);
     printf("\n\t- rom_header:\n");
     hexdump(header->rom_header, sizeof(header->rom_header));
     printf("\n\t- magic3: \"%s\".", header->magic3);
-    printf("\n\t- unk1: 0x%08x.", __builtin_bswap32(header->unk1));
-    printf("\n\t- time: 0x%08x.", __builtin_bswap32(header->time));
+    printf("\n\t- unk1: 0x%08x.", be_u32(header->unk1));
+    printf("\n\t- time: 0x%08x.", be_u32(header->time));
     printf("\n\t- magic4: \"%s\".", header->magic4);
-    printf("\n\t- savesize: 0x%08x (%u bytes).", __builtin_bswap32(header->savesize), __builtin_bswap32(header->savesize));
+    printf("\n\t- savesize: 0x%08x (%u bytes).", be_u32(header->savesize), be_u32(header->savesize));
     printf("\n\t- magic5: \"%s\".", header->magic5);
-    printf("\n\t- unk2: 0x%08x.", __builtin_bswap32(header->unk2));
-    printf("\n\t- type: 0x%08x.", __builtin_bswap32(header->type));
+    printf("\n\t- unk2: 0x%08x.", be_u32(header->unk2));
+    printf("\n\t- type: 0x%08x.", be_u32(header->type));
     printf("\n\t- magic6: \"%s\".", header->magic6);
-    printf("\n\t- unk3: 0x%08x.", __builtin_bswap32(header->unk3));
-    printf("\n\t- datasize1: 0x%08x (%u bytes).", __builtin_bswap32(header->datasize1), __builtin_bswap32(header->datasize1));
+    printf("\n\t- unk3: 0x%08x.", be_u32(header->unk3));
+    printf("\n\t- datasize1: 0x%08x (%u bytes).", be_u32(header->datasize1), be_u32(header->datasize1));
     printf("\n\t- magic7: \"%s\".", header->magic7);
-    printf("\n\t- datasize2: 0x%08x (%u bytes).\n", __builtin_bswap32(header->datasize2), __builtin_bswap32(header->datasize2));
+    printf("\n\t- datasize2: 0x%08x (%u bytes).\n", be_u32(header->datasize2), be_u32(header->datasize2));
 }
 #endif
 
@@ -270,7 +290,13 @@ int main(int argc, char **argv)
     char tmp[256] = {0};
     uint32_t data = 0;
     
+    big_endian_flag = is_big_endian();
+    
     printf("\n\tSimple Byteswapper for N64 Saves v%s - By DarkMatterCore\n", VERSION);
+    
+#ifdef DEBUG
+    printf("\tDetected CPU architecture: %s Endian.\n", (big_endian_flag ? "Big" : "Little"));
+#endif
     
     if (argc == 9)
     {
@@ -416,7 +442,7 @@ int main(int argc, char **argv)
 #endif
             
             /* Get save size */
-            save_size = __builtin_bswap32(sixtyforce_savedata_header.datasize2); // Stored in Big Endian
+            save_size = be_u32(sixtyforce_savedata_header.datasize2); // Stored in Big Endian
             
             /* Check if this file contains a Controller Pak save */
             sixtyforce_pak0_data_offset = (sizeof(sixtyforce_savedata_header_t) + save_size + SIXTYFORCE_PAK0_SIZE);
@@ -426,7 +452,7 @@ int main(int argc, char **argv)
                 fread(&data, 1, sizeof(uint32_t), infile);
                 rewind(infile);
                 
-                sixtyforce_ctrlpak_available = (data == __builtin_bswap32(SIXTYFORCE_PAK0_MAGIC));
+                sixtyforce_ctrlpak_available = (data == be_u32(SIXTYFORCE_PAK0_MAGIC));
                 if (sixtyforce_ctrlpak_available) sixtyforce_pak0_data_size = (infile_size - sixtyforce_pak0_data_offset); // Remaining data
             }
             
@@ -600,20 +626,20 @@ int main(int argc, char **argv)
     {
         /* Generate Sixtyforce header */
         strcpy(sixtyforce_savedata_header.magic1, SIXTYFORCE_MAGIC1);
-        sixtyforce_savedata_header.filesize = __builtin_bswap32((uint32_t)(sizeof(sixtyforce_savedata_header_t) - 0x08 + outfile_size));
+        sixtyforce_savedata_header.filesize = be_u32((uint32_t)(sizeof(sixtyforce_savedata_header_t) - 0x08 + outfile_size));
         strcpy(sixtyforce_savedata_header.magic2, SIXTYFORCE_MAGIC2);
         strcpy(sixtyforce_savedata_header.magic3, SIXTYFORCE_MAGIC3);
-        sixtyforce_savedata_header.unk1 = __builtin_bswap32(SIXTYFORCE_UNKNOWN);
+        sixtyforce_savedata_header.unk1 = be_u32(SIXTYFORCE_UNKNOWN);
         strcpy(sixtyforce_savedata_header.magic4, SIXTYFORCE_MAGIC4);
-        sixtyforce_savedata_header.savesize = __builtin_bswap32((uint32_t)(sizeof(sixtyforce_savedata_header_t) - 0x64 + outfile_size));
+        sixtyforce_savedata_header.savesize = be_u32((uint32_t)(sizeof(sixtyforce_savedata_header_t) - 0x64 + outfile_size));
         strcpy(sixtyforce_savedata_header.magic5, SIXTYFORCE_MAGIC5);
-        sixtyforce_savedata_header.unk2 = __builtin_bswap32(SIXTYFORCE_UNKNOWN);
-        sixtyforce_savedata_header.type = __builtin_bswap32(SIXTYFORCE_SAVE_TYPE(save_type));
+        sixtyforce_savedata_header.unk2 = be_u32(SIXTYFORCE_UNKNOWN);
+        sixtyforce_savedata_header.type = be_u32(SIXTYFORCE_SAVE_TYPE(save_type));
         strcpy(sixtyforce_savedata_header.magic6, SIXTYFORCE_MAGIC6);
-        sixtyforce_savedata_header.unk3 = __builtin_bswap32(SIXTYFORCE_UNKNOWN);
-        sixtyforce_savedata_header.datasize1 = __builtin_bswap32(outfile_size);
+        sixtyforce_savedata_header.unk3 = be_u32(SIXTYFORCE_UNKNOWN);
+        sixtyforce_savedata_header.datasize1 = be_u32(outfile_size);
         strcpy(sixtyforce_savedata_header.magic7, SIXTYFORCE_MAGIC7);
-        sixtyforce_savedata_header.datasize2 = __builtin_bswap32(outfile_size);
+        sixtyforce_savedata_header.datasize2 = be_u32(outfile_size);
         
 #ifdef DEBUG
         print_sixtyforce_savedata_header(&sixtyforce_savedata_header);
