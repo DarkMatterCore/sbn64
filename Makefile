@@ -1,4 +1,4 @@
-CFLAGS=-std=c99 -pedantic -Wall -O3
+CFLAGS=-std=c99 -Wall -Wextra -O2
 #STRIP=i586-mingw32msvc-strip
 #CC=i586-mingw32msvc-gcc
 STRIP=strip

@@ -1,9 +1,9 @@
 #include <stdio.h>
-#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
-#include <errno.h>
+#include <stdint.h>
+#include <inttypes.h>
 
 #if defined(__MINGW32__) || defined(_MSC_VER)
 #define strncasecmp _strnicmp
@@ -13,7 +13,7 @@
 
 //#define DEBUG
 
-#define VERSION "1.72"
+#define VERSION "1.73"
 
 #define EEPROM                  0x200       // 512 bytes (EEPROM 4 Kbits) (used in physical cartridges)
 #define EEPROMx4                0x800       // 2 KiB (EEPROM 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64/Not64)
@@ -544,7 +544,7 @@ int main(int argc, char **argv)
         }
     }
     
-    printf("\n\tDetected save type: %s (%lu Kbits).\n", SAVE_TYPE_STR(save_type), ((save_type_size * 8) / 1024));
+    printf("\n\tDetected save type: %s (%" PRIu64 " Kbits).\n", SAVE_TYPE_STR(save_type), ((save_type_size * 8) / 1024));
     
     if (src_fmt == FORMAT_TYPE_SIXTYFORCE && sixtyforce_ctrlpak_available && (dst_fmt == FORMAT_TYPE_WII64 || dst_fmt == FORMAT_TYPE_PROJECT64))
     {
