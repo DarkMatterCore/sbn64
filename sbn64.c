@@ -13,7 +13,7 @@
 
 //#define DEBUG
 
-#define VERSION "1.73"
+#define VERSION "1.74"
 
 #define EEPROM                  0x200       // 512 bytes (EEPROM 4 Kbits) (used in physical cartridges)
 #define EEPROMx4                0x800       // 2 KiB (EEPROM 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64/Not64)
@@ -78,7 +78,7 @@ typedef struct _format_type_t
 {
     char name[0x10];
     format_type_value_t val;
-} PACKED format_type_t;
+} format_type_t;
 
 typedef struct _sixtyforce_savedata_header_t
 {
@@ -608,10 +608,13 @@ int main(int argc, char **argv)
     /* Project64 EEPROM -> Wii64/Not64 EEPROM */
     /* Wii64/Not64 SRAM -> Wii N64 VC SRAM */
     /* Wii N64 VC SRAM -> Wii64/Not64 SRAM */
-    /* Wii64/Not64 FlashRAM -> Wii N64 VC FlashRAM */
-    /* Wii N64 VC FlashRAM -> Wii64/Not64 FlashRAM */
-    if (save_type_size == outfile_size && ((((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64) || (src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64)) && save_type == SAVE_TYPE_EEPROM) || \
-        (((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_WIIVC) || (src_fmt == FORMAT_TYPE_WIIVC && dst_fmt == FORMAT_TYPE_WII64)) && (save_type == SAVE_TYPE_SRAM || save_type == SAVE_TYPE_FLASHRAM))))
+    /* Wii64/Not64 FlashRAM -> Wii (U) N64 VC FlashRAM */
+    /* Wii (U) N64 VC FlashRAM -> Wii64/Not64 FlashRAM */
+    if (save_type_size == outfile_size && ( \
+       (save_type == SAVE_TYPE_EEPROM && ((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64) || (src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_PROJECT64))) || \
+       (save_type == SAVE_TYPE_SRAM && ((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_WIIVC) || (src_fmt == FORMAT_TYPE_WIIVC && dst_fmt == FORMAT_TYPE_WII64))) || \
+       (save_type == SAVE_TYPE_FLASHRAM && ((src_fmt == FORMAT_TYPE_WII64 && dst_fmt == FORMAT_TYPE_WIIVC) || (src_fmt == FORMAT_TYPE_WIIVC && dst_fmt == FORMAT_TYPE_WII64))) \
+       ))
     {
         printf("\n\tThis %s save file doesn't need to be modified.\n\tJust try it with %s.\n", \
                SAVE_TYPE_STR(save_type), \
@@ -688,7 +691,7 @@ int main(int argc, char **argv)
     
 out:
     if (outfile) fclose(outfile);
-    if (remove_outfile) remove(argv[output]);
+    if (output >= 0 && remove_outfile) remove(argv[output]);
     if (infile) fclose(infile);
     
     return ret;
