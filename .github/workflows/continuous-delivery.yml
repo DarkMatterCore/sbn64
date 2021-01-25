@@ -1,0 +1,76 @@
+name: Continuous Delivery
+
+on:
+    push:
+        tags:
+            - "v*"
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - uses: actions/checkout@v2
+
+            - name: Setup MinGW
+              run: sudo apt-get install mingw-w64 -y
+
+            - name: Compile sbn64 for Windows (x86)
+              run: |
+                  i686-w64-mingw32-gcc -std=c99 -Wall -Wextra -O2 sbn64.c -o sbn64_Windows_x86.exe
+                  i686-w64-mingw32-strip sbn64_Windows_x86.exe
+
+            - name: Compile sbn64 for Windows (x64)
+              run: |
+                  x86_64-w64-mingw32-gcc -std=c99 -Wall -Wextra -O2 sbn64.c -o sbn64_Windows_x64.exe
+                  x86_64-w64-mingw32-strip sbn64_Windows_x64.exe
+
+            - name: Compile sbn64 for Linux (x64)
+              run: |
+                  gcc -std=c99 -Wall -Wextra -O2 sbn64.c -o sbn64_Linux_x64
+                  strip sbn64_Linux_x64
+
+            - name: Get the tag version
+              id: get_version
+              run: echo ::set-output name=VERSION::${GITHUB_REF/refs\/tags\//}
+
+            - name: Create release
+              id: create_release
+              uses: actions/create-release@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  tag_name: ${{ steps.get_version.outputs.VERSION }}
+                  release_name: ${{ steps.get_version.outputs.VERSION }}
+                  draft: false
+                  prerelease: false
+
+            - name: Upload release asset (Windows x86)
+              uses: actions/upload-release-asset@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  upload_url: ${{ steps.create_release.outputs.upload_url }}
+                  asset_path: sbn64_Windows_x86.exe
+                  asset_name: sbn64_Windows_x86.exe
+                  asset_content_type: application/x-dosexec
+
+            - name: Upload release asset (Windows x64)
+              uses: actions/upload-release-asset@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  upload_url: ${{ steps.create_release.outputs.upload_url }}
+                  asset_path: sbn64_Windows_x64.exe
+                  asset_name: sbn64_Windows_x64.exe
+                  asset_content_type: application/x-dosexec
+
+            - name: Upload release asset (Linux x64)
+              uses: actions/upload-release-asset@v1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              with:
+                  upload_url: ${{ steps.create_release.outputs.upload_url }}
+                  asset_path: sbn64_Linux_x64
+                  asset_name: sbn64_Linux_x64
+                  asset_content_type: application/x-dosexec
