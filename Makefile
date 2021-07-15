@@ -1,8 +1,7 @@
 CFLAGS=-std=c99 -Wall -Wextra -O2
-#STRIP=i586-mingw32msvc-strip
-#CC=i586-mingw32msvc-gcc
-STRIP=strip
-CC=gcc
+PREFIX=i686-w64-mingw32-
+STRIP=$(PREFIX)strip
+CC=$(PREFIX)gcc
 EXE_EXT=.exe
 
 PROJECT_NAME=sbn64

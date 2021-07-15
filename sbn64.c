@@ -114,16 +114,16 @@ static bool big_endian_flag = false;
 static int get_line(char *prmpt, char *buff, size_t sz)
 {
     if (!buff || !sz) return -1;
-    
+
     // Get line with buffer overrun protection.
     if (prmpt && strlen(prmpt))
     {
         printf("%s", prmpt);
         fflush(stdout);
     }
-    
+
     if (fgets(buff, sz, stdin) == NULL) return -1;
-    
+
     // If it was too long, there'll be no newline.
     // In that case, we flush to end of line so that excess doesn't affect the next call.
     if (buff[strlen(buff) - 1] != '\n')
@@ -132,7 +132,7 @@ static int get_line(char *prmpt, char *buff, size_t sz)
         while(((ch = getchar()) != '\n') && (ch != EOF)) extra = 1;
         return ((extra == 1) ? -2 : 0);
     }
-    
+
     // Otherwise remove newline and give string back to caller.
     buff[strlen(buff) - 1] = '\0';
     return 0;
@@ -144,17 +144,17 @@ bool is_big_endian(void)
         uint32_t i;
         uint8_t c[4];
     } test_var = { 0x01020304 };
-    
+
     return (test_var.c[0] == 0x01);
 }
 
 static void write_data(FILE *input, FILE *output, size_t size, bool byteswap)
 {
     if (!input || !output || !size || (size % 4) != 0) return;
-    
+
     size_t i;
     uint32_t data = 0;
-    
+
     for(i = 0; i < size; i += 4)
     {
         fread(&data, 1, sizeof(uint32_t), input);
@@ -166,17 +166,17 @@ static void write_data(FILE *input, FILE *output, size_t size, bool byteswap)
 static void pad_data(FILE *output, size_t size, bool is_vc)
 {
     if (!output || !size) return;
-    
+
     size_t i;
     char nullch = (!is_vc ? 0x00 : 0xAA);
-    
+
     for(i = 0; i < size; i++) fwrite(&nullch, 1, sizeof(char), output);
 }
 
 static void usage(char **argv)
 {
     if (!argv || !argv[0] || !strlen(argv[0])) return;
-    
+
     printf("\n\tUsage: %s -i [infile] -o [outfile] -s [src_fmt] -d [dst_fmt]\n\n", argv[0]);
     printf("\t\t- infile: Name of the input save file.\n");
     printf("\t\t- outfile: Name of the output save file.\n");
@@ -198,16 +198,16 @@ static void usage(char **argv)
 static void hexdump(void *buf, size_t size)
 {
     if (!buf || !size) return;
-    
+
     size_t i, j;
     uint8_t *data = (uint8_t*)buf;
-    
+
     for(i = 0; i < size; i += 8)
     {
         printf("\n\t%08X\t", (uint32_t)i);
-        
+
         size_t len = ((size - i) > 8 ? 8 : (size - i));
-        
+
         for(j = 0; j < len; j++)
         {
             printf("%02X", data[i + j]);
@@ -236,17 +236,17 @@ static void hexdump(void *buf, size_t size)
                 printf(" ");
             }
         }
-        
+
         for(j = 0; j < len; j++) printf("%c", ((data[i + j] >= 0x20 && data[i + j] <= 0x7F) ? (char)data[i + j] : '.'));
     }
-    
+
     printf("\n");
 }
 
 static void print_sixtyforce_savedata_header(sixtyforce_savedata_header_t *header)
 {
     if (!header) return;
-    
+
     printf("\n\tSixtyforce header contents:\n");
     printf("\n\t- magic1: \"%s\".", header->magic1);
     printf("\n\t- filesize: 0x%08x (%u bytes).", be_u32(header->filesize), be_u32(header->filesize));
@@ -273,31 +273,31 @@ int main(int argc, char **argv)
 {
     int i, j, ret = 0;
     int input = -1, output = -1, src_fmt = -1, dst_fmt = -1;
-    
+
     FILE *infile = NULL, *outfile = NULL;
     size_t infile_size = 0, save_size = 0, outfile_size = 0;
     bool remove_outfile = true, byteswap = false;
-    
+
     save_type_t save_type = SAVE_TYPE_NONE;
     size_t save_type_size = 0;
-    
+
     bool sixtyforce_ctrlpak_available = false;
     size_t sixtyforce_pak0_data_offset = 0, sixtyforce_pak0_data_size = 0;
-    
+
     sixtyforce_savedata_header_t sixtyforce_savedata_header;
     memset(&sixtyforce_savedata_header, 0, sizeof(sixtyforce_savedata_header_t));
-    
+
     char tmp[256] = {0};
     uint32_t data = 0;
-    
+
     big_endian_flag = is_big_endian();
-    
+
     printf("\n\tSimple Byteswapper for N64 Saves v%s - By DarkMatterCore\n", VERSION);
-    
+
 #ifdef DEBUG
     printf("\tDetected CPU architecture: %s Endian.\n", (big_endian_flag ? "Big" : "Little"));
 #endif
-    
+
     if (argc == 9)
     {
         for(i = 1; i < argc; i++)
@@ -331,7 +331,7 @@ int main(int argc, char **argv)
                 if (src_fmt < 0)
                 {
                     i++;
-                    
+
                     /* Validate option */
                     for(j = 0; j < FORMAT_TYPE_CNT; j++)
                     {
@@ -342,7 +342,7 @@ int main(int argc, char **argv)
                             break;
                         }
                     }
-                    
+
                     if (src_fmt < 0) break;
                 } else {
                     src_fmt = -1;
@@ -354,7 +354,7 @@ int main(int argc, char **argv)
                 if (dst_fmt < 0)
                 {
                     i++;
-                    
+
                     /* Validate option */
                     for(j = 0; j < FORMAT_TYPE_CNT; j++)
                     {
@@ -365,7 +365,7 @@ int main(int argc, char **argv)
                             break;
                         }
                     }
-                    
+
                     if (dst_fmt < 0) break;
                 } else {
                     dst_fmt = -1;
@@ -374,21 +374,21 @@ int main(int argc, char **argv)
             }
         }
     }
-    
+
     if (input < 0 || output < 0 || !VALID_FORMAT_TYPE(src_fmt) || !VALID_FORMAT_TYPE(dst_fmt))
     {
         usage(argv);
         ret = -1;
         goto out;
     }
-    
+
     if (src_fmt == dst_fmt)
     {
         printf("\n\tDestination file format cannot be the same as the source file format.\n\tProcess aborted.\n");
         ret = -2;
         goto out;
     }
-    
+
     infile = fopen(argv[input], "rb");
     if (!infile)
     {
@@ -396,11 +396,11 @@ int main(int argc, char **argv)
         ret = -3;
         goto out;
     }
-    
+
     fseek(infile, 0, SEEK_END);
     infile_size = ftell(infile);
     rewind(infile);
-    
+
     if (!infile_size || infile_size > CtrlPakx8 || (infile_size % 4) != 0)
     {
         printf("\n\tInvalid N64 save file.\n");
@@ -410,14 +410,14 @@ int main(int argc, char **argv)
         ret = -4;
         goto out;
     }
-    
+
     if (src_fmt == FORMAT_TYPE_SIXTYFORCE && infile_size < sizeof(sixtyforce_savedata_header_t))
     {
         printf("\n\tInput save file is not big enough to store a Sixtyforce save header!\n");
         ret = -5;
         goto out;
     }
-    
+
     outfile = fopen(argv[output], "wb");
     if (!outfile)
     {
@@ -425,13 +425,13 @@ int main(int argc, char **argv)
         ret = -6;
         goto out;
     }
-    
+
     if (src_fmt == FORMAT_TYPE_SIXTYFORCE)
     {
         /* Check if this is a Sixtyforce save */
         fread(&sixtyforce_savedata_header, 1, sizeof(sixtyforce_savedata_header_t), infile);
         rewind(infile);
-        
+
         if (!strncmp(sixtyforce_savedata_header.magic1, SIXTYFORCE_MAGIC1, strlen(SIXTYFORCE_MAGIC1)) && !strncmp(sixtyforce_savedata_header.magic2, SIXTYFORCE_MAGIC2, strlen(SIXTYFORCE_MAGIC2)) && \
             !strncmp(sixtyforce_savedata_header.magic3, SIXTYFORCE_MAGIC3, strlen(SIXTYFORCE_MAGIC3)) && !strncmp(sixtyforce_savedata_header.magic4, SIXTYFORCE_MAGIC4, strlen(SIXTYFORCE_MAGIC4)) && \
             !strncmp(sixtyforce_savedata_header.magic5, SIXTYFORCE_MAGIC5, strlen(SIXTYFORCE_MAGIC5)) && !strncmp(sixtyforce_savedata_header.magic6, SIXTYFORCE_MAGIC6, strlen(SIXTYFORCE_MAGIC6)) && \
@@ -440,10 +440,10 @@ int main(int argc, char **argv)
 #ifdef DEBUG
             print_sixtyforce_savedata_header(&sixtyforce_savedata_header);
 #endif
-            
+
             /* Get save size */
             save_size = be_u32(sixtyforce_savedata_header.datasize2); // Stored in Big Endian
-            
+
             /* Check if this file contains a Controller Pak save */
             sixtyforce_pak0_data_offset = (sizeof(sixtyforce_savedata_header_t) + save_size + SIXTYFORCE_PAK0_SIZE);
             if (infile_size > sixtyforce_pak0_data_offset)
@@ -451,11 +451,11 @@ int main(int argc, char **argv)
                 fseek(infile, sizeof(sixtyforce_savedata_header_t) + save_size, SEEK_SET);
                 fread(&data, 1, sizeof(uint32_t), infile);
                 rewind(infile);
-                
+
                 sixtyforce_ctrlpak_available = (data == be_u32(SIXTYFORCE_PAK0_MAGIC));
                 if (sixtyforce_ctrlpak_available) sixtyforce_pak0_data_size = (infile_size - sixtyforce_pak0_data_offset); // Remaining data
             }
-            
+
             /* Prepare file stream position for data access */
             fseek(infile, sizeof(sixtyforce_savedata_header_t), SEEK_SET);
         } else {
@@ -467,7 +467,7 @@ int main(int argc, char **argv)
         /* Get save size */
         save_size = infile_size;
     }
-    
+
     /* Try to guess the most probable save type using the save file size */
     if (save_size <= EEPROM)
     {
@@ -507,7 +507,7 @@ int main(int argc, char **argv)
         save_type = SAVE_TYPE_CTRLPAK;
         save_type_size = CtrlPakx8;
     }
-    
+
     if (src_fmt == FORMAT_TYPE_WII64 && save_type == SAVE_TYPE_FLASHRAM)
     {
         if (!strncasecmp(argv[input] + strlen(argv[input]) - 4, ".fla", 4))
@@ -543,66 +543,66 @@ int main(int argc, char **argv)
             }
         }
     }
-    
-    printf("\n\tDetected save type: %s (%" PRIu64 " Kbits).\n", SAVE_TYPE_STR(save_type), ((save_type_size * 8) / 1024));
-    
+
+    printf("\n\tDetected save type: %s (%zu Kbits).\n", SAVE_TYPE_STR(save_type), ((save_type_size * 8) / 1024));
+
     if (src_fmt == FORMAT_TYPE_SIXTYFORCE && sixtyforce_ctrlpak_available && (dst_fmt == FORMAT_TYPE_WII64 || dst_fmt == FORMAT_TYPE_PROJECT64))
     {
         printf("\n\tDetected Sixtyforce Controller Pak save data (SRAM %u Kbits).\n", ((CtrlPak * 8) / 1024));
     }
-    
+
     if (dst_fmt == FORMAT_TYPE_WIIVC && save_type == SAVE_TYPE_CTRLPAK)
     {
         printf("\n\tWii N64 Virtual Console isn't compatible with\n\tController Pak save data.\n");
         ret = -8;
         goto out;
     }
-    
+
     if (dst_fmt == FORMAT_TYPE_SIXTYFORCE && save_type == SAVE_TYPE_CTRLPAK)
     {
         printf("\n\tConversion of Controller Pak data to the Sixtyforce format\n\tisn't supported (yet).\n");
         ret = -9;
         goto out;
     }
-    
+
     switch(save_type)
     {
         case SAVE_TYPE_EEPROM:
             /* Byteswapping isn't needed */
             byteswap = false;
-            
+
             /* Adjust output save size according to the destination format */
             outfile_size = ((dst_fmt == FORMAT_TYPE_WII64 || dst_fmt == FORMAT_TYPE_PROJECT64) ? EEPROMx4 : (dst_fmt == FORMAT_TYPE_WIIVC ? EEPROMx32 : EEPROMx8));
-            
+
             break;
         case SAVE_TYPE_SRAM: // SRAM
             /* Only apply 32-bit byteswapping if either the source or destiny format is Project64 */
             byteswap = (src_fmt == FORMAT_TYPE_PROJECT64 || dst_fmt == FORMAT_TYPE_PROJECT64);
-            
+
             /* Adjust output save size */
             outfile_size = SRAM;
-            
+
             break;
         case SAVE_TYPE_FLASHRAM: // Flash RAM
             /* Only apply 32-bit byteswapping if either the source or destiny format is Project64 */
             byteswap = (src_fmt == FORMAT_TYPE_PROJECT64 || dst_fmt == FORMAT_TYPE_PROJECT64);
-            
+
             /* Adjust output save size */
             outfile_size = FlashRAM;
-            
+
             break;
         case SAVE_TYPE_CTRLPAK: // Controller Pak
             /* Byteswapping isn't needed */
             byteswap = false;
-            
+
             /* Adjust output save size according to the destination format */
             outfile_size = (dst_fmt == FORMAT_TYPE_WII64 ? CtrlPakx4 : CtrlPakx8);
-            
+
             break;
         default:
             break;
     }
-    
+
     /* Redundancy checks: */
     /* Wii64/Not64 EEPROM -> Project64 EEPROM */
     /* Project64 EEPROM -> Wii64/Not64 EEPROM */
@@ -622,9 +622,9 @@ int main(int argc, char **argv)
         ret = -10;
         goto out;
     }
-    
+
     /* Time to do the magic */
-    
+
     if (dst_fmt == FORMAT_TYPE_SIXTYFORCE) // Sixtyforce
     {
         /* Generate Sixtyforce header */
@@ -643,26 +643,26 @@ int main(int argc, char **argv)
         sixtyforce_savedata_header.datasize1 = be_u32(outfile_size);
         strcpy(sixtyforce_savedata_header.magic7, SIXTYFORCE_MAGIC7);
         sixtyforce_savedata_header.datasize2 = be_u32(outfile_size);
-        
+
 #ifdef DEBUG
         print_sixtyforce_savedata_header(&sixtyforce_savedata_header);
 #endif
-        
+
         /* Write header to the output file */
         fwrite(&sixtyforce_savedata_header, 1, sizeof(sixtyforce_savedata_header_t), outfile);
     }
-    
+
     /* Write save data */
     write_data(infile, outfile, (outfile_size > save_size ? save_size : outfile_size), byteswap);
     if (outfile_size > save_size) pad_data(outfile, (outfile_size - save_size), (dst_fmt == FORMAT_TYPE_WIIVC));
     remove_outfile = false;
-    
+
     /* Extract the Controller Pak data from the Sixtyforce save (if available) */
     if (sixtyforce_ctrlpak_available && (dst_fmt == FORMAT_TYPE_WII64 || dst_fmt == FORMAT_TYPE_PROJECT64))
     {
         rewind(infile);
         fseek(infile, sixtyforce_pak0_data_offset, SEEK_SET);
-        
+
         /* Generate output filename for the Controller Pak data */
         char *ptr = strrchr(argv[output], '.');
         if (ptr != NULL)
@@ -671,28 +671,28 @@ int main(int argc, char **argv)
         } else {
             snprintf(tmp, MAX_CHARACTERS(tmp), "%s.mpk", argv[output]);
         }
-        
+
         FILE *cpak = fopen(tmp, "wb");
         if (cpak)
         {
             write_data(infile, cpak, sixtyforce_pak0_data_size, false);
             pad_data(cpak, (dst_fmt == FORMAT_TYPE_WII64 ? (CtrlPakx4 - sixtyforce_pak0_data_size) : (CtrlPakx8 - sixtyforce_pak0_data_size)), false);
-            
+
             fclose(cpak);
-            
+
             printf("\n\tSaved additional Controller Pak data to \"%s\".", tmp);
             printf("\n\tYou can use it with %s.\n", (dst_fmt == FORMAT_TYPE_WII64 ? "Wii64/Not64" : "Project64"));
         } else {
             printf("\n\tError opening \"%s\" for writing.\n", tmp);
         }
     }
-    
+
     printf("\n\tConversion process successfully completed!\n");
-    
+
 out:
     if (outfile) fclose(outfile);
     if (output >= 0 && remove_outfile) remove(argv[output]);
     if (infile) fclose(infile);
-    
+
     return ret;
 }
