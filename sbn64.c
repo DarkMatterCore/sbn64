@@ -13,7 +13,7 @@
 
 //#define DEBUG
 
-#define VERSION "1.74"
+#define VERSION "1.75"
 
 #define EEPROM                  0x200       // 512 bytes (EEPROM 4 Kbits) (used in physical cartridges)
 #define EEPROMx4                0x800       // 2 KiB (EEPROM 16 Kbits) (used in physical cartridges) (used in Project64 and Wii64/Not64)
@@ -56,6 +56,8 @@
 
 #define PACKED                  __attribute__((packed))
 
+#define BIT(x)                  (1 << (x))
+
 typedef enum {
     SAVE_TYPE_NONE = 0,
     SAVE_TYPE_EEPROM,
@@ -71,6 +73,7 @@ typedef enum {
     FORMAT_TYPE_PROJECT64,
     FORMAT_TYPE_WIIVC,
     FORMAT_TYPE_SIXTYFORCE,
+    FORMAT_TYPE_EVERDRIVE64,
     FORMAT_TYPE_CNT
 } format_type_value_t;
 
@@ -105,8 +108,16 @@ static const format_type_t formats[FORMAT_TYPE_CNT] = {
     { "wii64", FORMAT_TYPE_WII64 },
     { "pj64", FORMAT_TYPE_PROJECT64 },
     { "wiivc", FORMAT_TYPE_WIIVC },
-    { "sixtyforce", FORMAT_TYPE_SIXTYFORCE }
+    { "sixtyforce", FORMAT_TYPE_SIXTYFORCE },
+    { "ed64", FORMAT_TYPE_EVERDRIVE64 }
 };
+
+typedef enum {
+    BYTESWAP_NONE        = 0,
+    BYTESWAP_16BIT       = BIT(0),
+    BYTESWAP_32BIT       = BIT(1),
+    BYTESWAP_16BIT_FIRST = BIT(2)
+} byteswap_type_mask_t;
 
 static bool big_endian_flag = false;
 
@@ -138,7 +149,7 @@ static int get_line(char *prmpt, char *buff, size_t sz)
     return 0;
 }
 
-bool is_big_endian(void)
+static bool is_big_endian(void)
 {
     union {
         uint32_t i;
@@ -148,7 +159,12 @@ bool is_big_endian(void)
     return (test_var.c[0] == 0x01);
 }
 
-static void write_data(FILE *input, FILE *output, size_t size, bool byteswap)
+static inline uint32_t bswap16x2(uint32_t data)
+{
+    return ((__builtin_bswap16(data >> 16) << 16) | __builtin_bswap16(data & 0xFFFF));
+}
+
+static void write_data(FILE *input, FILE *output, size_t size, byteswap_type_mask_t bs_mask)
 {
     if (!input || !output || !size || (size % 4) != 0) return;
 
@@ -158,7 +174,22 @@ static void write_data(FILE *input, FILE *output, size_t size, bool byteswap)
     for(i = 0; i < size; i += 4)
     {
         fread(&data, 1, sizeof(uint32_t), input);
-        if (byteswap) data = __builtin_bswap32(data);
+
+        if ((bs_mask & (BYTESWAP_16BIT | BYTESWAP_32BIT)) == (BYTESWAP_16BIT | BYTESWAP_32BIT))
+        {
+            data = (bs_mask & BYTESWAP_16BIT_FIRST ? bswap16x2(data) : __builtin_bswap32(data));
+            data = (bs_mask & BYTESWAP_16BIT_FIRST ? __builtin_bswap32(data) : bswap16x2(data));
+        } else {
+            if (bs_mask & BYTESWAP_16BIT)
+            {
+                data = bswap16x2(data);
+            } else
+            if (bs_mask & BYTESWAP_32BIT)
+            {
+                data = __builtin_bswap32(data);
+            }
+        }
+
         fwrite(&data, 1, sizeof(uint32_t), output);
     }
 }
@@ -186,12 +217,14 @@ static void usage(char **argv)
     printf("\t\t- \"wii64\": Wii64/Not64 save format.\n");
     printf("\t\t- \"pj64\": Project64 save format.\n");
     printf("\t\t- \"wiivc\": Wii N64 Virtual Console save format.\n");
-    printf("\t\t- \"sixtyforce\": Sixtyforce save format.\n\n");
+    printf("\t\t- \"sixtyforce\": Sixtyforce save format.\n");
+    printf("\t\t- \"ed64\": EverDrive 64 save format.\n\n");
     printf("\tExample:\n\n");
     printf("\t\t%s -i \"ZELDA MAJORA'S MASK.fla\" -o \"majora_wii.fla\" -s pj64 -d wii64\n\n", argv[0]);
     printf("\tNotes:\n\n");
     printf("\t\t- Conversion from Sixtyforce format requested by Morshu9001.\n");
     printf("\t\t- Conversion to Sixtyforce format requested by Ulises Ribas.\n");
+    printf("\t\t- Conversion to EverDrive 64 format requested by Math_Appropriate.\n");
 }
 
 #ifdef DEBUG
@@ -276,7 +309,8 @@ int main(int argc, char **argv)
 
     FILE *infile = NULL, *outfile = NULL;
     size_t infile_size = 0, save_size = 0, outfile_size = 0;
-    bool remove_outfile = true, byteswap = false;
+    bool remove_outfile = true;
+    byteswap_type_mask_t bs_mask = BYTESWAP_NONE;
 
     save_type_t save_type = SAVE_TYPE_NONE;
     size_t save_type_size = 0;
@@ -284,8 +318,7 @@ int main(int argc, char **argv)
     bool sixtyforce_ctrlpak_available = false;
     size_t sixtyforce_pak0_data_offset = 0, sixtyforce_pak0_data_size = 0;
 
-    sixtyforce_savedata_header_t sixtyforce_savedata_header;
-    memset(&sixtyforce_savedata_header, 0, sizeof(sixtyforce_savedata_header_t));
+    sixtyforce_savedata_header_t sixtyforce_savedata_header = {0};
 
     char tmp[256] = {0};
     uint32_t data = 0;
@@ -569,23 +602,40 @@ int main(int argc, char **argv)
     {
         case SAVE_TYPE_EEPROM:
             /* Byteswapping isn't needed */
-            byteswap = false;
+            bs_mask = BYTESWAP_NONE;
 
             /* Adjust output save size according to the destination format */
-            outfile_size = ((dst_fmt == FORMAT_TYPE_WII64 || dst_fmt == FORMAT_TYPE_PROJECT64) ? EEPROMx4 : (dst_fmt == FORMAT_TYPE_WIIVC ? EEPROMx32 : EEPROMx8));
+            if (dst_fmt == FORMAT_TYPE_EVERDRIVE64)
+            {
+                outfile_size = (save_type_size > EEPROM ? EEPROMx4 : EEPROM);
+            } else {
+                outfile_size = ((dst_fmt == FORMAT_TYPE_WII64 || dst_fmt == FORMAT_TYPE_PROJECT64) ? EEPROMx4 : (dst_fmt == FORMAT_TYPE_WIIVC ? EEPROMx32 : EEPROMx8));
+            }
 
             break;
         case SAVE_TYPE_SRAM: // SRAM
-            /* Only apply 32-bit byteswapping if either the source or destiny format is Project64 */
-            byteswap = (src_fmt == FORMAT_TYPE_PROJECT64 || dst_fmt == FORMAT_TYPE_PROJECT64);
+            /* Apply 16-bit byteswapping if either the source or destination format is EverDrive 64 */
+            if (src_fmt == FORMAT_TYPE_EVERDRIVE64 || dst_fmt == FORMAT_TYPE_EVERDRIVE64) bs_mask |= BYTESWAP_16BIT;
+
+            /* Only apply 32-bit byteswapping if either the source or destination format is Project64 */
+            if (src_fmt == FORMAT_TYPE_PROJECT64 || dst_fmt == FORMAT_TYPE_PROJECT64) bs_mask |= BYTESWAP_32BIT;
+
+            /* Set byteswap operation order. */
+            if (src_fmt == FORMAT_TYPE_EVERDRIVE64) bs_mask |= BYTESWAP_16BIT_FIRST;
 
             /* Adjust output save size */
             outfile_size = SRAM;
 
             break;
         case SAVE_TYPE_FLASHRAM: // Flash RAM
-            /* Only apply 32-bit byteswapping if either the source or destiny format is Project64 */
-            byteswap = (src_fmt == FORMAT_TYPE_PROJECT64 || dst_fmt == FORMAT_TYPE_PROJECT64);
+            /* Apply 16-bit byteswapping if either the source or destination format is EverDrive 64 */
+            if (src_fmt == FORMAT_TYPE_EVERDRIVE64 || dst_fmt == FORMAT_TYPE_EVERDRIVE64) bs_mask |= BYTESWAP_16BIT;
+
+            /* Only apply 32-bit byteswapping if either the source or destination format is Project64 */
+            if (src_fmt == FORMAT_TYPE_PROJECT64 || dst_fmt == FORMAT_TYPE_PROJECT64) bs_mask |= BYTESWAP_32BIT;
+
+            /* Set byteswap operation order. */
+            if (src_fmt == FORMAT_TYPE_EVERDRIVE64) bs_mask |= BYTESWAP_16BIT_FIRST;
 
             /* Adjust output save size */
             outfile_size = FlashRAM;
@@ -593,10 +643,10 @@ int main(int argc, char **argv)
             break;
         case SAVE_TYPE_CTRLPAK: // Controller Pak
             /* Byteswapping isn't needed */
-            byteswap = false;
+            bs_mask = BYTESWAP_NONE;
 
             /* Adjust output save size according to the destination format */
-            outfile_size = (dst_fmt == FORMAT_TYPE_WII64 ? CtrlPakx4 : CtrlPakx8);
+            outfile_size = (dst_fmt == FORMAT_TYPE_EVERDRIVE64 ? CtrlPak : (dst_fmt == FORMAT_TYPE_WII64 ? CtrlPakx4 : CtrlPakx8));
 
             break;
         default:
@@ -623,7 +673,7 @@ int main(int argc, char **argv)
         goto out;
     }
 
-    /* Time to do the magic */
+    /* It's showtime */
 
     if (dst_fmt == FORMAT_TYPE_SIXTYFORCE) // Sixtyforce
     {
@@ -652,8 +702,10 @@ int main(int argc, char **argv)
         fwrite(&sixtyforce_savedata_header, 1, sizeof(sixtyforce_savedata_header_t), outfile);
     }
 
+    printf("\n\tOutput save file size: 0x%zX. Byteswap mask: 0x%zX.\n", outfile_size, bs_mask);
+
     /* Write save data */
-    write_data(infile, outfile, (outfile_size > save_size ? save_size : outfile_size), byteswap);
+    write_data(infile, outfile, (outfile_size > save_size ? save_size : outfile_size), bs_mask);
     if (outfile_size > save_size) pad_data(outfile, (outfile_size - save_size), (dst_fmt == FORMAT_TYPE_WIIVC));
     remove_outfile = false;
 
@@ -675,7 +727,7 @@ int main(int argc, char **argv)
         FILE *cpak = fopen(tmp, "wb");
         if (cpak)
         {
-            write_data(infile, cpak, sixtyforce_pak0_data_size, false);
+            write_data(infile, cpak, sixtyforce_pak0_data_size, BYTESWAP_NONE);
             pad_data(cpak, (dst_fmt == FORMAT_TYPE_WII64 ? (CtrlPakx4 - sixtyforce_pak0_data_size) : (CtrlPakx8 - sixtyforce_pak0_data_size)), false);
 
             fclose(cpak);
